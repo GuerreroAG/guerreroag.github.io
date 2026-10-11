@@ -11,7 +11,7 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
 });
 
-// Nettoyage automatique des anciens caches lors d'une mise à jour
+// Nettoyage automatique des anciens caches lors d'une mise à jour 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keyList) => {
