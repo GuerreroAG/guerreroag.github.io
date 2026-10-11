@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Token Printer MTG</title>
     
-    <!-- Liens PWA (Manifest, Couleur du thème, Icône) -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#ff9800">
     <link rel="apple-touch-icon" href="icon.png">
@@ -104,6 +103,35 @@
             height: 46px;
             font-size: 1.2rem;
             cursor: pointer;
+        }
+
+        /* --- Nouveaux styles pour les compteurs rapides --- */
+        #quick-counters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            width: 100%;
+            max-width: 384px;
+        }
+
+        .counter-btn {
+            background-color: var(--btn-bg);
+            border: 1px solid var(--accent-color);
+            color: var(--text-color);
+            padding: 10px 15px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .counter-btn:active {
+            transform: scale(0.95);
+            background-color: var(--accent-color);
+            color: var(--bg-color);
         }
 
         #result-text {
@@ -261,6 +289,14 @@
         <input type="text" id="manual-input" placeholder="Ou tape un nom (ex: chevalier 2/2)...">
         <button id="search-btn" aria-label="Rechercher">🔍</button>
     </div>
+
+    <!-- NOUVEAU : Boutons d'accès rapide -->
+    <div id="quick-counters">
+        <button class="counter-btn" onclick="generateCounter('+1 / +1')">+1 / +1</button>
+        <button class="counter-btn" onclick="generateCounter('+5 / +5')">+5 / +5</button>
+        <button class="counter-btn" onclick="generateCounter('-1 / -1')">-1 / -1</button>
+        <button class="counter-btn" onclick="generateCounter('Vol')">Vol</button>
+    </div>
     
     <div id="result-text"></div>
 
@@ -351,9 +387,48 @@
             setSelectorContainer.style.display = "none";
         }
 
-        brightnessSlider.addEventListener('input', () => { brightVal.textContent = brightnessSlider.value; if (tokenImage.src) processImageToCanvas(tokenImage); });
-        contrastSlider.addEventListener('input', () => { contrVal.textContent = contrastSlider.value; if (tokenImage.src) processImageToCanvas(tokenImage); });
-        algoModeSelect.addEventListener('change', () => { if (tokenImage.src) processImageToCanvas(tokenImage); });
+        // --- NOUVELLE FONCTION : Génération locale de compteurs ---
+        window.generateCounter = function(text) {
+            resetUI();
+            resultText.textContent = "Marqueur : " + text;
+            statusText.textContent = "Génération du marqueur...";
+            
+            // On fait un rectangle de 384 de large par 200 de haut
+            const width = PRINTER_WIDTH;
+            const height = 200; 
+            
+            ditheredCanvas.width = width;
+            ditheredCanvas.height = height;
+            
+            // Fond blanc
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, width, height);
+            
+            // Double bordure noire pour le style
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 8;
+            ctx.strokeRect(10, 10, width - 20, height - 20);
+            ctx.lineWidth = 2;
+            ctx.strokeRect(22, 22, width - 44, height - 44);
+
+            // Texte centré
+            ctx.fillStyle = "black";
+            // On adapte la taille de police si le texte est long (ex: "Vol")
+            ctx.font = text.length > 5 ? "bold 70px sans-serif" : "bold 100px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(text, width / 2, height / 2);
+
+            // Affichage
+            ditheredWrapper.style.display = "flex";
+            canvasLabel.textContent = "Prêt pour l'impression (Dessiné localement)";
+            printBtn.style.display = "block";
+            statusText.textContent = "Prêt à imprimer !";
+        };
+
+        brightnessSlider.addEventListener('input', () => { brightVal.textContent = brightnessSlider.value; if (tokenImage.src && originalWrapper.style.display !== "none") processImageToCanvas(tokenImage); });
+        contrastSlider.addEventListener('input', () => { contrVal.textContent = contrastSlider.value; if (tokenImage.src && originalWrapper.style.display !== "none") processImageToCanvas(tokenImage); });
+        algoModeSelect.addEventListener('change', () => { if (tokenImage.src && originalWrapper.style.display !== "none") processImageToCanvas(tokenImage); });
 
         setSelect.addEventListener('change', (e) => {
             const selectedIndex = e.target.value;
@@ -601,7 +676,6 @@
             }
         }
 
-        // --- ENREGISTREMENT DU SERVICE WORKER (Pour la PWA) ---
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
         }
