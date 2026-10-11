@@ -109,7 +109,6 @@
             text-transform: capitalize;
         }
 
-        /* --- Nouveau style pour le sélecteur d'édition --- */
         #set-selector-container {
             display: none;
             flex-direction: column;
@@ -253,13 +252,12 @@
     <div id="status-text">Appuie pour parler...</div>
 
     <div id="manual-search-container">
-        <input type="text" id="manual-input" placeholder="Ou tape un nom...">
+        <input type="text" id="manual-input" placeholder="Ou tape un nom (ex: chevalier 2/2)...">
         <button id="search-btn" aria-label="Rechercher">🔍</button>
     </div>
     
     <div id="result-text"></div>
 
-    <!-- Le nouveau sélecteur d'édition -->
     <div id="set-selector-container">
         <label for="set-select">Illustration :</label>
         <select id="set-select"></select>
@@ -328,7 +326,6 @@
         let bluetoothDevice = null;
         let bluetoothCharacteristic = null;
 
-        // Nouvelles variables globales pour gérer les multiples jetons
         let currentTokensList = [];
         let currentSearchTerm = "";
 
@@ -336,7 +333,8 @@
             "tresor": "treasure", "elfe": "elf", "nourriture": "food", "orque": "orc",
             "armee d'orques": "orc army", "gobelin": "goblin", "bete": "beast",
             "humain": "human", "soldat": "soldier", "zombie": "zombie", "esprit": "spirit",
-            "dinosaure": "dinosaur", "plante": "plant"
+            "dinosaure": "dinosaur", "plante": "plant", "chevalier": "knight", 
+            "ange": "angel", "dragon": "dragon", "vampire": "vampire"
         };
 
         function resetUI() {
@@ -347,12 +345,10 @@
             setSelectorContainer.style.display = "none";
         }
 
-        // --- Événements Interface ---
         brightnessSlider.addEventListener('input', () => { brightVal.textContent = brightnessSlider.value; if (tokenImage.src) processImageToCanvas(tokenImage); });
         contrastSlider.addEventListener('input', () => { contrVal.textContent = contrastSlider.value; if (tokenImage.src) processImageToCanvas(tokenImage); });
         algoModeSelect.addEventListener('change', () => { if (tokenImage.src) processImageToCanvas(tokenImage); });
 
-        // Quand on change d'extension dans la liste
         setSelect.addEventListener('change', (e) => {
             const selectedIndex = e.target.value;
             displayCard(currentTokensList[selectedIndex]);
@@ -360,13 +356,26 @@
 
         function processQuery(text) {
             resultText.textContent = text;
-            let normalizedText = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            
+            // 1. Détection des statistiques (Force/Endurance) avec extraction propre
+            let ptStats = null;
+            const ptMatch = text.match(/(\d+)\s*(?:\/|sur|x|-)\s*(\d+)/i);
+            let textWithoutPt = text;
+            
+            if (ptMatch) {
+                ptStats = { pow: ptMatch[1], tou: ptMatch[2] };
+                textWithoutPt = text.replace(ptMatch[0], '');
+            }
+
+            let normalizedText = textWithoutPt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             let cleanWord = normalizedText.replace(/\b(imprime|un|une|le|la|les|des|de|jeton)\b/g, '').trim();
             cleanWord = cleanWord.replace(/\s+/g, ' '); 
             let englishTerm = tokenDictionary[cleanWord] || cleanWord;
-            currentSearchTerm = englishTerm; // On sauvegarde le terme exact pour les recto-verso
+            
+            currentSearchTerm = englishTerm; 
             resetUI();
-            fetchTokenFromScryfall(englishTerm);
+            
+            fetchTokenFromScryfall(englishTerm, ptStats);
         }
 
         searchBtn.addEventListener('click', () => { if (manualInput.value) processQuery(manualInput.value); });
@@ -386,28 +395,39 @@
             recognition.onerror = (e) => { micBtn.classList.remove('listening'); statusText.textContent = `Erreur : ${e.error}`; };
         }
 
-        // --- NOUVELLE FONCTION DE RECHERCHE GLOBALE ---
-        async function fetchTokenFromScryfall(tokenName) {
-            statusText.textContent = `Recherche de "${tokenName}"...`;
+        async function fetchTokenFromScryfall(tokenName, ptStats = null) {
+            const displayPt = ptStats ? ` (${ptStats.pow}/${ptStats.tou})` : "";
+            statusText.textContent = `Recherche de "${tokenName}"${displayPt}...`;
+            
             try {
-                // On utilise &unique=prints pour récupérer TOUTES les versions existantes
-                let response = await fetch(`https://api.scryfall.com/cards/search?q=t:token+name:"${tokenName}"&unique=prints`);
+                let baseQuery = `t:token name:"${tokenName}"`;
+                if (ptStats) {
+                    baseQuery += ` pow:${ptStats.pow} tou:${ptStats.tou}`;
+                }
+                
+                const ltrQuery = `${baseQuery} (set:ltr OR set:ltc)`;
+                
+                let url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(ltrQuery)}&unique=prints`;
+                let response = await fetch(url);
                 let data = await response.json();
+
+                if (!data.data || data.data.length === 0) {
+                    url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(baseQuery)}&unique=prints`;
+                    response = await fetch(url);
+                    data = await response.json();
+                }
 
                 if (data.data && data.data.length > 0) {
                     currentTokensList = data.data;
-                    setSelect.innerHTML = ""; // On vide la liste précédente
+                    setSelect.innerHTML = ""; 
                     let defaultIndex = 0;
 
-                    // On remplit la liste déroulante
                     currentTokensList.forEach((card, index) => {
                         let option = document.createElement("option");
                         option.value = index;
-                        // On affiche le nom de l'édition et le numéro de collection pour différencier les arts alternatifs
                         option.textContent = `${card.set_name} (${card.set.toUpperCase()}) - #${card.collector_number}`;
                         setSelect.appendChild(option);
 
-                        // Si la carte est du Seigneur des Anneaux (LTR ou LTC), on la met par défaut !
                         if (card.set === 'ltr' || card.set === 'ltc') {
                             defaultIndex = index;
                         }
@@ -415,18 +435,15 @@
 
                     setSelect.value = defaultIndex;
                     setSelectorContainer.style.display = "flex";
-                    
-                    // Affiche la carte choisie
                     displayCard(currentTokensList[defaultIndex]);
                 } else { 
-                    statusText.textContent = "Aucun token trouvé."; 
+                    statusText.textContent = "Aucun token correspondant trouvé."; 
                 }
             } catch (error) { 
                 statusText.textContent = "Erreur de connexion à Scryfall."; 
             }
         }
 
-        // --- FONCTION D'AFFICHAGE SÉPARÉE ---
         function displayCard(card) {
             let imageUrl = null;
 
@@ -448,7 +465,6 @@
                 originalWrapper.style.display = "flex";
                 statusText.textContent = "Application du traitement...";
                 
-                // L'événement onload s'occupe de déclencher le traitement d'image
                 tokenImage.onload = () => {
                     processImageToCanvas(tokenImage);
                     statusText.textContent = "Prêt à imprimer !";
@@ -460,7 +476,6 @@
             }
         }
 
-        // --- TRAITEMENT D'IMAGE ---
         function processImageToCanvas(img) {
             const ratio = img.height / img.width;
             const targetWidth = PRINTER_WIDTH;
@@ -510,7 +525,6 @@
             data[index] = data[index+1] = data[index+2] = Math.max(0, Math.min(255, val));
         }
 
-        // --- BLUETOOTH ESC/POS ---
         printBtn.addEventListener('click', async () => {
             if (!navigator.bluetooth) {
                 alert("Le Web Bluetooth n'est pas supporté sur ce navigateur.");
