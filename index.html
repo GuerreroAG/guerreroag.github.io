@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Token Printer MTG</title>
+    
+    <!-- Liens PWA (Manifest, Couleur du thème, Icône) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#ff9800">
+    <link rel="apple-touch-icon" href="icon.png">
+    
     <style>
         :root {
             --bg-color: #1a1a1a;
@@ -357,7 +363,6 @@
         function processQuery(text) {
             resultText.textContent = text;
             
-            // 1. Détection des statistiques (Force/Endurance) avec extraction propre
             let ptStats = null;
             const ptMatch = text.match(/(\d+)\s*(?:\/|sur|x|-)\s*(\d+)/i);
             let textWithoutPt = text;
@@ -594,6 +599,11 @@
                 await bluetoothCharacteristic.writeValue(chunk);
                 await new Promise(resolve => setTimeout(resolve, 20));
             }
+        }
+
+        // --- ENREGISTREMENT DU SERVICE WORKER (Pour la PWA) ---
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
         }
     </script>
 </body>
