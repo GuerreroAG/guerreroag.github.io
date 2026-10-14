@@ -639,4 +639,57 @@
             const widthBytes = Math.ceil(width / 8); 
             
             // En-tête CPCL avec dimension de la zone d'impression
-            const
+            const header = `! 0 200 200 ${height} 1\r\nPAGE-WIDTH 384\r\nGW 0 0 ${widthBytes} ${height}\r\n`;
+            const headerBytes = new TextEncoder().encode(header);
+            
+            // Données de l'image
+            const imageBuffer = new Uint8Array(widthBytes * height);
+            let offset = 0;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < widthBytes; x++) {
+                    let byte = 0;
+                    for (let bit = 0; bit < 8; bit++) {
+                        const pixelX = x * 8 + bit;
+                        if (pixelX < width) {
+                            const idx = (y * width + pixelX) * 4;
+                            if (pixels[idx] < 128) byte |= (1 << (7 - bit));
+                        }
+                    }
+                    imageBuffer[offset++] = byte;
+                }
+            }
+            
+            // Pied de page : Valider la page (FORM) et déclencher l'impression (PRINT)
+            const footer = `\r\nFORM\r\nPRINT\r\n`;
+            const footerBytes = new TextEncoder().encode(footer);
+            
+            // Assemblage final
+            const buffer = new Uint8Array(headerBytes.length + imageBuffer.length + footerBytes.length);
+            buffer.set(headerBytes, 0);
+            buffer.set(imageBuffer, headerBytes.length);
+            buffer.set(footerBytes, headerBytes.length + imageBuffer.length);
+            
+            return buffer;
+        }
+
+        async function sendChunks(data) {
+            const CHUNK_SIZE = 100;
+            for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+                const chunk = data.slice(i, i + CHUNK_SIZE);
+                
+                if (bluetoothCharacteristic.properties.writeWithoutResponse) {
+                    await bluetoothCharacteristic.writeValueWithoutResponse(chunk);
+                } else {
+                    await bluetoothCharacteristic.writeValue(chunk);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 20)); 
+            }
+        }
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
