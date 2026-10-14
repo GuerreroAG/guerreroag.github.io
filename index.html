@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Token Printer MTG</title>
+    <title>Token Printer MTG V20</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#ff9800">
@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer (v19 - BLOCKS)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v20 Final)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -613,7 +613,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v19 - BLOCKS)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v20 Final)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -630,33 +630,36 @@
             const pixels = ctx.getImageData(0, 0, width, height).data;
             const widthBytes = Math.ceil(width / 8); 
             
-            // --- NOUVEAU SECRET : LA DÉCOUPE EN BLOCS MAX 255 LIGNES ---
-            const MAX_LINES = 255;
-            let bufferSize = 9; // En-tête
+            // L'ASTUCE EST ICI : on découpe l'image en blocs de max 200 lignes pour ne pas saturer la M110
+            const MAX_LINES = 200;
+            
+            // Calcul de la taille de l'envoi total
+            let bufferSize = 11; // En-tête M110
             for (let startY = 0; startY < height; startY += MAX_LINES) {
                 const linesInBlock = Math.min(MAX_LINES, height - startY);
-                bufferSize += 8; // Marqueur de bloc
-                bufferSize += widthBytes * linesInBlock;
+                bufferSize += 8; // Commande d'image
+                bufferSize += widthBytes * linesInBlock; // Pixels
             }
-            bufferSize += 15; // Pied de page
-
+            bufferSize += 8; // Pied de page M110
+            
             const buffer = new Uint8Array(bufferSize);
             let offset = 0;
 
-            // 1. En-tête Phomemo
-            buffer.set([0x1B, 0x40], offset); offset += 2; // Init
-            buffer.set([0x1B, 0x61, 0x01], offset); offset += 3; // Centré
-            buffer.set([0x1F, 0x11, 0x02, 0x04], offset); offset += 4; // Magic Bytes
+            // 1. L'EN-TÊTE DE LA V5 QUI A FAIT SES PREUVES (M110)
+            buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4; // Vitesse
+            buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4; // Densité
+            buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;       // Papier continu
 
-            // 2. Traitement de l'image par blocs de 255 lignes max
+            // 2. DÉCOUPAGE DE L'IMAGE EN BLOCS DE 200 LIGNES
             for (let startY = 0; startY < height; startY += MAX_LINES) {
                 const linesInBlock = Math.min(MAX_LINES, height - startY);
                 
-                // Commande d'image avec hauteur dynamique (linesInBlock)
+                // Commande d'impression ESC/POS
                 buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
                 buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
                 buffer[offset++] = linesInBlock & 0xFF; buffer[offset++] = (linesInBlock >> 8) & 0xFF;
 
+                // Envoi des pixels pour CE bloc
                 for (let y = 0; y < linesInBlock; y++) {
                     const actualY = startY + y;
                     for (let x = 0; x < widthBytes; x++) {
@@ -673,14 +676,13 @@
                 }
             }
 
-            // 3. Pied de page magique
-            buffer.set([0x1B, 0x64, 0x02], offset); offset += 3; // Avancer de 2 lignes
-            buffer.set([0x1F, 0x11, 0x08, 0x1F, 0x11, 0x0E, 0x1F, 0x11, 0x07, 0x1F, 0x11, 0x09], offset); offset += 12; // Magic Footer
+            // 3. PIED DE PAGE M110 POUR DÉCLENCHER LE MOTEUR
+            buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
             
             return buffer;
         }
 
-        // Accélération stabilisée
+        // ENVOI STABLE ET FLUIDE
         async function sendChunks(data) {
             const CHUNK_SIZE = 100;
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
@@ -690,8 +692,8 @@
                 } else {
                     await bluetoothCharacteristic.writeValue(chunk);
                 }
-                // Pause très courte car writeWithoutResponse gère la cadence
-                await new Promise(resolve => setTimeout(resolve, 20)); 
+                // Pause de sécurité
+                await new Promise(resolve => setTimeout(resolve, 10)); 
             }
         }
 
