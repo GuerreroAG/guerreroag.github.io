@@ -641,18 +641,30 @@
             }
         });
 
-        function generateEscPosData() {
+function generateEscPosData() {
             const width = ditheredCanvas.width;
             const height = ditheredCanvas.height;
             const pixels = ctx.getImageData(0, 0, width, height).data;
             const widthBytes = Math.ceil(width / 8); 
-            const buffer = new Uint8Array(8 + (widthBytes * height) + 4);
+            
+            // On calcule la taille totale : Header (11) + Image Cmd (8) + Pixels + Footer (8)
+            const buffer = new Uint8Array(11 + 8 + (widthBytes * height) + 8);
+            let offset = 0;
 
-            buffer[0] = 0x1D; buffer[1] = 0x76; buffer[2] = 0x30; buffer[3] = 0x00;
-            buffer[4] = widthBytes & 0xFF; buffer[5] = (widthBytes >> 8) & 0xFF;
-            buffer[6] = height & 0xFF; buffer[7] = (height >> 8) & 0xFF;
+            // --- HEADER SPÉCIFIQUE PHOMEMO M110 ---
+            // Vitesse d'impression maximale (0x05)
+            buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4;
+            // Densité d'impression maximale (0x0F)
+            buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4;
+            // Type de papier : Continu (0x0B). Remplacer par 0x0A si retour aux étiquettes.
+            buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;
 
-            let offset = 8;
+            // --- COMMANDE D'IMAGE STANDARD ---
+            buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
+            buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
+            buffer[offset++] = height & 0xFF; buffer[offset++] = (height >> 8) & 0xFF;
+
+            // --- DONNÉES D'IMAGE ---
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < widthBytes; x++) {
                     let byte = 0;
@@ -666,7 +678,11 @@
                     buffer[offset++] = byte;
                 }
             }
-            buffer[offset++] = 0x0A; buffer[offset++] = 0x0A; buffer[offset++] = 0x0A; buffer[offset++] = 0x0A;
+
+            // --- FOOTER SPÉCIFIQUE PHOMEMO ---
+            // Déclenche physiquement le moteur et finalise l'impression
+            buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
+            
             return buffer;
         }
 
