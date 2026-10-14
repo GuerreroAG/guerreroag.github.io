@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Token Printer MTG V20</title>
+    <title>Token Printer MTG</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#ff9800">
@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer (v20 Final)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v20 - TSPL NATIVE)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -605,7 +605,7 @@
                     bluetoothCharacteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
                 }
                 statusText.textContent = "Génération des données d'impression...";
-                const printData = generateEscPosData();
+                const printData = generateTsplData();
                 statusText.textContent = "Envoi à l'imprimante...";
                 printBtn.textContent = "⏳ Impression...";
                 printBtn.style.backgroundColor = "#ff9800";
@@ -613,7 +613,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v20 Final)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v20 - TSPL NATIVE)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -624,67 +624,58 @@
             }
         });
 
-        function generateEscPosData() {
+        // NOUVEAU PROTOCOLE COMPLET : TSPL (Standard des étiqueteuses)
+        function generateTsplData() {
             const width = ditheredCanvas.width;
             const height = ditheredCanvas.height;
             const pixels = ctx.getImageData(0, 0, width, height).data;
             const widthBytes = Math.ceil(width / 8); 
             
-            // L'ASTUCE EST ICI : on découpe l'image en blocs de max 200 lignes pour ne pas saturer la M110
-            const MAX_LINES = 200;
+            // Calcul de la hauteur en millimètres (1 mm = 8 points en 203 DPI)
+            const heightMm = Math.ceil(height / 8);
             
-            // Calcul de la taille de l'envoi total
-            let bufferSize = 11; // En-tête M110
-            for (let startY = 0; startY < height; startY += MAX_LINES) {
-                const linesInBlock = Math.min(MAX_LINES, height - startY);
-                bufferSize += 8; // Commande d'image
-                bufferSize += widthBytes * linesInBlock; // Pixels
-            }
-            bufferSize += 8; // Pied de page M110
+            // Construction de l'en-tête TSPL en pur texte ASCII
+            let headerStr = `SIZE 48 mm,${heightMm} mm\r\n`;
+            headerStr += `GAP 0,0\r\n`; // Définit le papier comme continu
+            headerStr += `DIRECTION 1\r\n`;
+            headerStr += `CLS\r\n`;
+            headerStr += `BITMAP 0,0,${widthBytes},${height},0,`;
             
-            const buffer = new Uint8Array(bufferSize);
+            const headerBytes = new TextEncoder().encode(headerStr);
+            
+            // Conversion des pixels de l'image
+            const imageBuffer = new Uint8Array(widthBytes * height);
             let offset = 0;
-
-            // 1. L'EN-TÊTE DE LA V5 QUI A FAIT SES PREUVES (M110)
-            buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4; // Vitesse
-            buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4; // Densité
-            buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;       // Papier continu
-
-            // 2. DÉCOUPAGE DE L'IMAGE EN BLOCS DE 200 LIGNES
-            for (let startY = 0; startY < height; startY += MAX_LINES) {
-                const linesInBlock = Math.min(MAX_LINES, height - startY);
-                
-                // Commande d'impression ESC/POS
-                buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
-                buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
-                buffer[offset++] = linesInBlock & 0xFF; buffer[offset++] = (linesInBlock >> 8) & 0xFF;
-
-                // Envoi des pixels pour CE bloc
-                for (let y = 0; y < linesInBlock; y++) {
-                    const actualY = startY + y;
-                    for (let x = 0; x < widthBytes; x++) {
-                        let byte = 0;
-                        for (let bit = 0; bit < 8; bit++) {
-                            const pixelX = x * 8 + bit;
-                            if (pixelX < width) {
-                                const idx = (actualY * width + pixelX) * 4;
-                                if (pixels[idx] < 128) byte |= (1 << (7 - bit));
-                            }
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < widthBytes; x++) {
+                    let byte = 0;
+                    for (let bit = 0; bit < 8; bit++) {
+                        const pixelX = x * 8 + bit;
+                        if (pixelX < width) {
+                            const idx = (y * width + pixelX) * 4;
+                            // En TSPL Mode 0 : 1 = noir, 0 = blanc
+                            if (pixels[idx] < 128) byte |= (1 << (7 - bit));
                         }
-                        buffer[offset++] = byte;
                     }
+                    imageBuffer[offset++] = byte;
                 }
             }
-
-            // 3. PIED DE PAGE M110 POUR DÉCLENCHER LE MOTEUR
-            buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
             
-            return buffer;
+            // Pied de page pour déclencher l'impression du buffer
+            const footerStr = `\r\nPRINT 1\r\n`;
+            const footerBytes = new TextEncoder().encode(footerStr);
+            
+            // Assemblage final des 3 parties
+            const finalBuffer = new Uint8Array(headerBytes.length + imageBuffer.length + footerBytes.length);
+            finalBuffer.set(headerBytes, 0);
+            finalBuffer.set(imageBuffer, headerBytes.length);
+            finalBuffer.set(footerBytes, headerBytes.length + imageBuffer.length);
+            
+            return finalBuffer;
         }
 
-        // ENVOI STABLE ET FLUIDE
         async function sendChunks(data) {
-            const CHUNK_SIZE = 100;
+            const CHUNK_SIZE = 100; 
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
                 if (bluetoothCharacteristic.properties.writeWithoutResponse) {
@@ -692,8 +683,8 @@
                 } else {
                     await bluetoothCharacteristic.writeValue(chunk);
                 }
-                // Pause de sécurité
-                await new Promise(resolve => setTimeout(resolve, 10)); 
+                // Pause de sécurité adaptée au TSPL
+                await new Promise(resolve => setTimeout(resolve, 20)); 
             }
         }
 
