@@ -333,8 +333,7 @@
         </div>
     </div>
 
-    <!-- V8 pour valider le cache -->
-    <button id="print-btn">🖨️ Connecter & Imprimer (v8)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v9 Stable)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -621,7 +620,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v8)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v9 Stable)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -672,14 +671,13 @@
             return buffer;
         }
 
-        // --- VITESSE V8 : Retour à la taille sûre (v5) mais avec un délai très court ---
+        // --- RETOUR À LA SÉCURITÉ V5 ---
         async function sendChunks(data) {
-            const CHUNK_SIZE = 50; // On garde les paquets de la v5 qui ont prouvé leur fonctionnement
+            const CHUNK_SIZE = 50; 
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
                 await bluetoothCharacteristic.writeValue(chunk);
-                // On réduit le temps de pause à 10ms au lieu de 30ms pour gagner en vitesse
-                await new Promise(resolve => setTimeout(resolve, 10)); 
+                await new Promise(resolve => setTimeout(resolve, 30)); 
             }
         }
 
