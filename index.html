@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer (v12)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v13 - Reset)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -448,7 +448,6 @@
         searchBtn.addEventListener('click', () => { if (manualInput.value) processQuery(manualInput.value); });
         manualInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && manualInput.value) { manualInput.blur(); processQuery(manualInput.value); } });
 
-        // Protection stricte de la reconnaissance vocale pour la Navigation Privée
         let SpeechRecognition = null;
         try {
             SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -608,7 +607,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v12)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v13 - Reset)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -628,7 +627,7 @@
             const buffer = new Uint8Array(11 + 8 + (widthBytes * height) + 8);
             let offset = 0;
 
-            // 1. En-tête propriétaire Phomemo (Confirmé fonctionnel en V5)
+            // 1. En-tête propriétaire Phomemo
             buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4; 
             buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4; 
             buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;       
@@ -653,22 +652,20 @@
                 }
             }
 
-            // 4. Pied de page propriétaire Phomemo (Déclenchement du moteur)
+            // 4. Pied de page propriétaire Phomemo
             buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
             
             return buffer;
         }
 
-        // Méthode rapide et stabilisée V10
+        // --- ENVOI ULTRA SÉCURISÉ (Retour au fonctionnement V5, optimisé) ---
         async function sendChunks(data) {
-            const CHUNK_SIZE = 100;
+            const CHUNK_SIZE = 80; // Plus gros que V5 (50) mais bien en dessous des limites Android
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
-                if (bluetoothCharacteristic.properties.writeWithoutResponse) {
-                    await bluetoothCharacteristic.writeValueWithoutResponse(chunk);
-                } else {
-                    await bluetoothCharacteristic.writeValue(chunk);
-                }
+                // On impose un accusé de réception pour forcer Android à attendre
+                await bluetoothCharacteristic.writeValue(chunk);
+                // Pause de sécurité
                 await new Promise(resolve => setTimeout(resolve, 15)); 
             }
         }
