@@ -333,8 +333,8 @@
         </div>
     </div>
 
-    <!-- V6 pour valider le cache -->
-    <button id="print-btn">🖨️ Connecter & Imprimer (v6)</button>
+    <!-- Le bouton V7 pour confirmer que le cache est bien vidé -->
+    <button id="print-btn">🖨️ Connecter & Imprimer (v7)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -621,7 +621,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v6)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v7)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -672,14 +672,14 @@
             return buffer;
         }
 
-        // --- NOUVELLE VITESSE : Paquets 5x plus gros, pause 3x plus courte ---
+        // --- VITESSE EQUILIBRÉE : Le compromis parfait ---
         async function sendChunks(data) {
-            const CHUNK_SIZE = 250; 
+            const CHUNK_SIZE = 100; // Pas trop gros pour la M110
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
                 await bluetoothCharacteristic.writeValue(chunk);
-                // Le Web Bluetooth attend déjà l'acquittement, on peut réduire la pause à 10ms
-                await new Promise(resolve => setTimeout(resolve, 10)); 
+                // Pause de 20ms pour laisser la machine respirer
+                await new Promise(resolve => setTimeout(resolve, 20)); 
             }
         }
 
