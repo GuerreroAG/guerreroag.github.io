@@ -279,7 +279,7 @@
 </head>
 <body>
 
-    <h1>Générateur de Token (v17)</h1>
+    <h1>Générateur de Token</h1>
     
     <button id="mic-btn" aria-label="Lancer la reconnaissance vocale">🎤</button>
     <div id="status-text">Appuie pour parler...</div>
@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer (v17 - Reset Test)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v19 - BLOCKS)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -386,7 +386,6 @@
             setSelectorContainer.style.display = "none";
         }
 
-        // Écouteurs d'événements 100% JS (sécurité maximum, pas de onclick)
         document.querySelectorAll('.counter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 generateCounter(e.target.getAttribute('data-val'));
@@ -455,29 +454,26 @@
         searchBtn.addEventListener('click', () => { if (manualInput.value) processQuery(manualInput.value); });
         manualInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && manualInput.value) { manualInput.blur(); processQuery(manualInput.value); } });
 
-        // GESTION SÉCURISÉE DU MICRO (Évite les plantages)
         let SpeechRecognition = null;
         try {
             SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         } catch(e) {}
-        
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'fr-FR';
-            micBtn.addEventListener('click', () => {
-                try {
-                    recognition.start();
-                } catch(e) {
-                    console.log("Erreur micro:", e);
-                }
-            });
-            recognition.onstart = () => { micBtn.classList.add('listening'); statusText.textContent = "Je t'écoute..."; resetUI(); manualInput.value = ""; };
-            recognition.onspeechend = () => micBtn.classList.remove('listening');
-            recognition.onresult = (e) => processQuery(e.results[0][0].transcript);
-            recognition.onerror = (e) => { micBtn.classList.remove('listening'); statusText.textContent = `Erreur : ${e.error}`; };
-        } else {
+
+        if (!SpeechRecognition) {
+            statusText.textContent = "Reconnaissance vocale non supportée.";
             micBtn.disabled = true;
-            micBtn.style.opacity = "0.5";
+        } else {
+            try {
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'fr-FR';
+                micBtn.addEventListener('click', () => recognition.start());
+                recognition.onstart = () => { micBtn.classList.add('listening'); statusText.textContent = "Je t'écoute..."; resetUI(); manualInput.value = ""; };
+                recognition.onspeechend = () => micBtn.classList.remove('listening');
+                recognition.onresult = (e) => processQuery(e.results[0][0].transcript);
+                recognition.onerror = (e) => { micBtn.classList.remove('listening'); statusText.textContent = `Erreur : ${e.error}`; };
+            } catch(e) {
+                micBtn.disabled = true;
+            }
         }
 
         async function fetchTokenFromScryfall(tokenName, ptStats = null) {
@@ -617,7 +613,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v17 - Reset Test)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v19 - BLOCKS)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -634,47 +630,68 @@
             const pixels = ctx.getImageData(0, 0, width, height).data;
             const widthBytes = Math.ceil(width / 8); 
             
-            const buffer = new Uint8Array(11 + 8 + (widthBytes * height) + 8);
+            // --- NOUVEAU SECRET : LA DÉCOUPE EN BLOCS MAX 255 LIGNES ---
+            const MAX_LINES = 255;
+            let bufferSize = 9; // En-tête
+            for (let startY = 0; startY < height; startY += MAX_LINES) {
+                const linesInBlock = Math.min(MAX_LINES, height - startY);
+                bufferSize += 8; // Marqueur de bloc
+                bufferSize += widthBytes * linesInBlock;
+            }
+            bufferSize += 15; // Pied de page
+
+            const buffer = new Uint8Array(bufferSize);
             let offset = 0;
 
-            // En-tête propriétaire Phomemo
-            buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4; 
-            buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4; 
-            buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;       
+            // 1. En-tête Phomemo
+            buffer.set([0x1B, 0x40], offset); offset += 2; // Init
+            buffer.set([0x1B, 0x61, 0x01], offset); offset += 3; // Centré
+            buffer.set([0x1F, 0x11, 0x02, 0x04], offset); offset += 4; // Magic Bytes
 
-            // Commande d'image standard ESC/POS
-            buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
-            buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
-            buffer[offset++] = height & 0xFF; buffer[offset++] = (height >> 8) & 0xFF;
+            // 2. Traitement de l'image par blocs de 255 lignes max
+            for (let startY = 0; startY < height; startY += MAX_LINES) {
+                const linesInBlock = Math.min(MAX_LINES, height - startY);
+                
+                // Commande d'image avec hauteur dynamique (linesInBlock)
+                buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
+                buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
+                buffer[offset++] = linesInBlock & 0xFF; buffer[offset++] = (linesInBlock >> 8) & 0xFF;
 
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < widthBytes; x++) {
-                    let byte = 0;
-                    for (let bit = 0; bit < 8; bit++) {
-                        const pixelX = x * 8 + bit;
-                        if (pixelX < width) {
-                            const idx = (y * width + pixelX) * 4;
-                            if (pixels[idx] < 128) byte |= (1 << (7 - bit));
+                for (let y = 0; y < linesInBlock; y++) {
+                    const actualY = startY + y;
+                    for (let x = 0; x < widthBytes; x++) {
+                        let byte = 0;
+                        for (let bit = 0; bit < 8; bit++) {
+                            const pixelX = x * 8 + bit;
+                            if (pixelX < width) {
+                                const idx = (actualY * width + pixelX) * 4;
+                                if (pixels[idx] < 128) byte |= (1 << (7 - bit));
+                            }
                         }
+                        buffer[offset++] = byte;
                     }
-                    buffer[offset++] = byte;
                 }
             }
 
-            // Pied de page propriétaire Phomemo
-            buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
+            // 3. Pied de page magique
+            buffer.set([0x1B, 0x64, 0x02], offset); offset += 3; // Avancer de 2 lignes
+            buffer.set([0x1F, 0x11, 0x08, 0x1F, 0x11, 0x0E, 0x1F, 0x11, 0x07, 0x1F, 0x11, 0x09], offset); offset += 12; // Magic Footer
             
             return buffer;
         }
 
-        // Protocole V16/V5 sécurisé (50 octets / 40ms)
+        // Accélération stabilisée
         async function sendChunks(data) {
-            const CHUNK_SIZE = 50; 
+            const CHUNK_SIZE = 100;
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
-                await bluetoothCharacteristic.writeValue(chunk);
-                // Pause stricte de 40ms pour être absolument sûr que l'imprimante a le temps d'avaler le paquet
-                await new Promise(resolve => setTimeout(resolve, 40)); 
+                if (bluetoothCharacteristic.properties.writeWithoutResponse) {
+                    await bluetoothCharacteristic.writeValueWithoutResponse(chunk);
+                } else {
+                    await bluetoothCharacteristic.writeValue(chunk);
+                }
+                // Pause très courte car writeWithoutResponse gère la cadence
+                await new Promise(resolve => setTimeout(resolve, 20)); 
             }
         }
 
