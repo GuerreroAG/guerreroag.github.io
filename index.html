@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer (v11 - CPCL)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v12)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -360,12 +360,11 @@
         const contrVal = document.getElementById('contr-val');
 
         const PRINTER_WIDTH = 384; 
-
         const BLE_SERVICE_UUID = "0000ff00-0000-1000-8000-00805f9b34fb";
         const BLE_CHARACTERISTIC_UUID = "0000ff02-0000-1000-8000-00805f9b34fb";
+        
         let bluetoothDevice = null;
         let bluetoothCharacteristic = null;
-
         let currentTokensList = [];
         let currentSearchTerm = "";
 
@@ -394,19 +393,16 @@
             
             const width = PRINTER_WIDTH;
             const height = 200; 
-            
             ditheredCanvas.width = width;
             ditheredCanvas.height = height;
             
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, width, height);
-            
             ctx.strokeStyle = "black";
             ctx.lineWidth = 8;
             ctx.strokeRect(10, 10, width - 20, height - 20);
             ctx.lineWidth = 2;
             ctx.strokeRect(22, 22, width - 44, height - 44);
-
             ctx.fillStyle = "black";
             ctx.font = text.length > 5 ? "bold 70px sans-serif" : "bold 100px sans-serif";
             ctx.textAlign = "center";
@@ -430,7 +426,6 @@
 
         function processQuery(text) {
             resultText.textContent = text;
-            
             let ptStats = null;
             const ptMatch = text.match(/(\d+)\s*(?:\/|sur|x|-)\s*(\d+)/i);
             let textWithoutPt = text;
@@ -447,25 +442,33 @@
             
             currentSearchTerm = englishTerm; 
             resetUI();
-            
             fetchTokenFromScryfall(englishTerm, ptStats);
         }
 
         searchBtn.addEventListener('click', () => { if (manualInput.value) processQuery(manualInput.value); });
         manualInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && manualInput.value) { manualInput.blur(); processQuery(manualInput.value); } });
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        // Protection stricte de la reconnaissance vocale pour la Navigation Privée
+        let SpeechRecognition = null;
+        try {
+            SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        } catch(e) {}
+
         if (!SpeechRecognition) {
             statusText.textContent = "Reconnaissance vocale non supportée.";
             micBtn.disabled = true;
         } else {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'fr-FR';
-            micBtn.addEventListener('click', () => recognition.start());
-            recognition.onstart = () => { micBtn.classList.add('listening'); statusText.textContent = "Je t'écoute..."; resetUI(); manualInput.value = ""; };
-            recognition.onspeechend = () => micBtn.classList.remove('listening');
-            recognition.onresult = (e) => processQuery(e.results[0][0].transcript);
-            recognition.onerror = (e) => { micBtn.classList.remove('listening'); statusText.textContent = `Erreur : ${e.error}`; };
+            try {
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'fr-FR';
+                micBtn.addEventListener('click', () => recognition.start());
+                recognition.onstart = () => { micBtn.classList.add('listening'); statusText.textContent = "Je t'écoute..."; resetUI(); manualInput.value = ""; };
+                recognition.onspeechend = () => micBtn.classList.remove('listening');
+                recognition.onresult = (e) => processQuery(e.results[0][0].transcript);
+                recognition.onerror = (e) => { micBtn.classList.remove('listening'); statusText.textContent = `Erreur : ${e.error}`; };
+            } catch(e) {
+                micBtn.disabled = true;
+            }
         }
 
         async function fetchTokenFromScryfall(tokenName, ptStats = null) {
@@ -474,10 +477,7 @@
             
             try {
                 let baseQuery = `t:token name:"${tokenName}"`;
-                if (ptStats) {
-                    baseQuery += ` pow:${ptStats.pow} tou:${ptStats.tou}`;
-                }
-                
+                if (ptStats) { baseQuery += ` pow:${ptStats.pow} tou:${ptStats.tou}`; }
                 const ltrQuery = `${baseQuery} (set:ltr OR set:ltc)`;
                 
                 let url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(ltrQuery)}&unique=prints`;
@@ -494,18 +494,13 @@
                     currentTokensList = data.data;
                     setSelect.innerHTML = ""; 
                     let defaultIndex = 0;
-
                     currentTokensList.forEach((card, index) => {
                         let option = document.createElement("option");
                         option.value = index;
                         option.textContent = `${card.set_name} (${card.set.toUpperCase()}) - #${card.collector_number}`;
                         setSelect.appendChild(option);
-
-                        if (card.set === 'ltr' || card.set === 'ltc') {
-                            defaultIndex = index;
-                        }
+                        if (card.set === 'ltr' || card.set === 'ltc') { defaultIndex = index; }
                     });
-
                     setSelect.value = defaultIndex;
                     setSelectorContainer.style.display = "flex";
                     displayCard(currentTokensList[defaultIndex]);
@@ -519,7 +514,6 @@
 
         function displayCard(card) {
             let imageUrl = null;
-
             if (card.image_uris && card.image_uris.normal) { 
                 imageUrl = card.image_uris.normal; 
             } else if (card.card_faces) {
@@ -534,10 +528,8 @@
                 } else {
                     processImageToCanvas(tokenImage);
                 }
-
                 originalWrapper.style.display = "flex";
                 statusText.textContent = "Application du traitement...";
-                
                 tokenImage.onload = () => {
                     processImageToCanvas(tokenImage);
                     statusText.textContent = "Prêt à imprimer !";
@@ -553,14 +545,11 @@
             const ratio = img.height / img.width;
             const targetWidth = PRINTER_WIDTH;
             const targetHeight = Math.round(targetWidth * ratio);
-
             ditheredCanvas.width = targetWidth;
             ditheredCanvas.height = targetHeight;
             ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-
             const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
             const data = imageData.data;
-
             const CONTRAST = parseFloat(contrastSlider.value);
             const BRIGHTNESS = parseInt(brightnessSlider.value);
             const ALGO = algoModeSelect.value;
@@ -572,7 +561,6 @@
                     let luminance = 0.299 * data[index] + 0.587 * data[index+1] + 0.114 * data[index+2];
                     luminance = (luminance - 128) * CONTRAST + 128 + BRIGHTNESS;
                     luminance = Math.max(0, Math.min(255, luminance)); 
-                    
                     const newPixel = luminance < 128 ? 0 : 255;
                     data[index] = data[index+1] = data[index+2] = newPixel;
                     
@@ -612,7 +600,7 @@
                     bluetoothCharacteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
                 }
                 statusText.textContent = "Génération des données d'impression...";
-                const printData = generateCpclData();
+                const printData = generateEscPosData();
                 statusText.textContent = "Envoi à l'imprimante...";
                 printBtn.textContent = "⏳ Impression...";
                 printBtn.style.backgroundColor = "#ff9800";
@@ -620,7 +608,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v11 - CPCL)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v12)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -631,20 +619,26 @@
             }
         });
 
-        // NOUVEAU PROTOCOLE : Langage d'étiquettes CPCL (Mode Page)
-        function generateCpclData() {
+        function generateEscPosData() {
             const width = ditheredCanvas.width;
             const height = ditheredCanvas.height;
             const pixels = ctx.getImageData(0, 0, width, height).data;
             const widthBytes = Math.ceil(width / 8); 
             
-            // En-tête CPCL avec dimension de la zone d'impression
-            const header = `! 0 200 200 ${height} 1\r\nPAGE-WIDTH 384\r\nGW 0 0 ${widthBytes} ${height}\r\n`;
-            const headerBytes = new TextEncoder().encode(header);
-            
-            // Données de l'image
-            const imageBuffer = new Uint8Array(widthBytes * height);
+            const buffer = new Uint8Array(11 + 8 + (widthBytes * height) + 8);
             let offset = 0;
+
+            // 1. En-tête propriétaire Phomemo (Confirmé fonctionnel en V5)
+            buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4; 
+            buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4; 
+            buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;       
+
+            // 2. Commande d'image standard ESC/POS
+            buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
+            buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
+            buffer[offset++] = height & 0xFF; buffer[offset++] = (height >> 8) & 0xFF;
+
+            // 3. Conversion des pixels
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < widthBytes; x++) {
                     let byte = 0;
@@ -655,40 +649,35 @@
                             if (pixels[idx] < 128) byte |= (1 << (7 - bit));
                         }
                     }
-                    imageBuffer[offset++] = byte;
+                    buffer[offset++] = byte;
                 }
             }
-            
-            // Pied de page : Valider la page (FORM) et déclencher l'impression (PRINT)
-            const footer = `\r\nFORM\r\nPRINT\r\n`;
-            const footerBytes = new TextEncoder().encode(footer);
-            
-            // Assemblage final
-            const buffer = new Uint8Array(headerBytes.length + imageBuffer.length + footerBytes.length);
-            buffer.set(headerBytes, 0);
-            buffer.set(imageBuffer, headerBytes.length);
-            buffer.set(footerBytes, headerBytes.length + imageBuffer.length);
+
+            // 4. Pied de page propriétaire Phomemo (Déclenchement du moteur)
+            buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
             
             return buffer;
         }
 
+        // Méthode rapide et stabilisée V10
         async function sendChunks(data) {
             const CHUNK_SIZE = 100;
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
-                
                 if (bluetoothCharacteristic.properties.writeWithoutResponse) {
                     await bluetoothCharacteristic.writeValueWithoutResponse(chunk);
                 } else {
                     await bluetoothCharacteristic.writeValue(chunk);
                 }
-                
-                await new Promise(resolve => setTimeout(resolve, 20)); 
+                await new Promise(resolve => setTimeout(resolve, 15)); 
             }
         }
 
+        // Protection du Service Worker pour la Navigation Privée
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+            try {
+                navigator.serviceWorker.register('sw.js').catch(e => console.log(e));
+            } catch(e) {}
         }
     </script>
 </body>
