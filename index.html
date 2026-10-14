@@ -279,7 +279,7 @@
 </head>
 <body>
 
-    <h1>Générateur de Token</h1>
+    <h1>Générateur de Token (v17)</h1>
     
     <button id="mic-btn" aria-label="Lancer la reconnaissance vocale">🎤</button>
     <div id="status-text">Appuie pour parler...</div>
@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer (v16 - Bypass)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v17 - Reset Test)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -386,7 +386,7 @@
             setSelectorContainer.style.display = "none";
         }
 
-        // Ajout des écouteurs d'événements 100% JS (remplace les onclick du HTML)
+        // Écouteurs d'événements 100% JS (sécurité maximum, pas de onclick)
         document.querySelectorAll('.counter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 generateCounter(e.target.getAttribute('data-val'));
@@ -455,26 +455,29 @@
         searchBtn.addEventListener('click', () => { if (manualInput.value) processQuery(manualInput.value); });
         manualInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && manualInput.value) { manualInput.blur(); processQuery(manualInput.value); } });
 
+        // GESTION SÉCURISÉE DU MICRO (Évite les plantages)
         let SpeechRecognition = null;
         try {
             SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         } catch(e) {}
-
-        if (!SpeechRecognition) {
-            statusText.textContent = "Reconnaissance vocale non supportée.";
-            micBtn.disabled = true;
+        
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'fr-FR';
+            micBtn.addEventListener('click', () => {
+                try {
+                    recognition.start();
+                } catch(e) {
+                    console.log("Erreur micro:", e);
+                }
+            });
+            recognition.onstart = () => { micBtn.classList.add('listening'); statusText.textContent = "Je t'écoute..."; resetUI(); manualInput.value = ""; };
+            recognition.onspeechend = () => micBtn.classList.remove('listening');
+            recognition.onresult = (e) => processQuery(e.results[0][0].transcript);
+            recognition.onerror = (e) => { micBtn.classList.remove('listening'); statusText.textContent = `Erreur : ${e.error}`; };
         } else {
-            try {
-                const recognition = new SpeechRecognition();
-                recognition.lang = 'fr-FR';
-                micBtn.addEventListener('click', () => recognition.start());
-                recognition.onstart = () => { micBtn.classList.add('listening'); statusText.textContent = "Je t'écoute..."; resetUI(); manualInput.value = ""; };
-                recognition.onspeechend = () => micBtn.classList.remove('listening');
-                recognition.onresult = (e) => processQuery(e.results[0][0].transcript);
-                recognition.onerror = (e) => { micBtn.classList.remove('listening'); statusText.textContent = `Erreur : ${e.error}`; };
-            } catch(e) {
-                micBtn.disabled = true;
-            }
+            micBtn.disabled = true;
+            micBtn.style.opacity = "0.5";
         }
 
         async function fetchTokenFromScryfall(tokenName, ptStats = null) {
@@ -614,7 +617,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v16 - Bypass)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v17 - Reset Test)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -664,6 +667,7 @@
             return buffer;
         }
 
+        // Protocole V16/V5 sécurisé (50 octets / 40ms)
         async function sendChunks(data) {
             const CHUNK_SIZE = 50; 
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
