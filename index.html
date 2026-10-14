@@ -333,8 +333,8 @@
         </div>
     </div>
 
-    <!-- Le bouton V5 pour confirmer que le cache est bien vidé -->
-    <button id="print-btn">🖨️ Connecter & Imprimer (v5)</button>
+    <!-- V6 pour valider le cache -->
+    <button id="print-btn">🖨️ Connecter & Imprimer (v6)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -621,7 +621,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v5)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v6)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -672,13 +672,14 @@
             return buffer;
         }
 
+        // --- NOUVELLE VITESSE : Paquets 5x plus gros, pause 3x plus courte ---
         async function sendChunks(data) {
-            const CHUNK_SIZE = 50; 
+            const CHUNK_SIZE = 250; 
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
                 await bluetoothCharacteristic.writeValue(chunk);
-                // Pause stricte de 30ms pour laisser le tampon de l'imprimante se vider
-                await new Promise(resolve => setTimeout(resolve, 30)); 
+                // Le Web Bluetooth attend déjà l'acquittement, on peut réduire la pause à 10ms
+                await new Promise(resolve => setTimeout(resolve, 10)); 
             }
         }
 
