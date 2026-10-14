@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer (v4)</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v5)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -620,7 +620,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer (v4)";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v5)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -632,52 +632,54 @@
         });
 
         function generateEscPosData() {
-            const width = ditheredCanvas.width;
-            const height = ditheredCanvas.height;
-            const pixels = ctx.getImageData(0, 0, width, height).data;
-            const widthBytes = Math.ceil(width / 8); 
-            
-            const buffer = new Uint8Array(2 + 8 + (widthBytes * height) + 5);
-            let offset = 0;
+    const width = ditheredCanvas.width;
+    const height = ditheredCanvas.height;
+    const pixels = ctx.getImageData(0, 0, width, height).data;
+    const widthBytes = Math.ceil(width / 8); 
+    
+    const buffer = new Uint8Array(11 + 8 + (widthBytes * height) + 8);
+    let offset = 0;
 
-            // 1. Initialisation (Reset)
-            buffer[offset++] = 0x1B; buffer[offset++] = 0x40;
+    // 1. En-tête propriétaire Phomemo
+    buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4; // Vitesse max
+    buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4; // Densité max
+    buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;       // Type de papier : Continu
 
-            // 2. Commande d'image standard ESC/POS
-            buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
-            buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
-            buffer[offset++] = height & 0xFF; buffer[offset++] = (height >> 8) & 0xFF;
+    // 2. Commande d'image standard ESC/POS
+    buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
+    buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
+    buffer[offset++] = height & 0xFF; buffer[offset++] = (height >> 8) & 0xFF;
 
-            // 3. Pixels
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < widthBytes; x++) {
-                    let byte = 0;
-                    for (let bit = 0; bit < 8; bit++) {
-                        const pixelX = x * 8 + bit;
-                        if (pixelX < width) {
-                            const idx = (y * width + pixelX) * 4;
-                            if (pixels[idx] < 128) byte |= (1 << (7 - bit));
-                        }
-                    }
-                    buffer[offset++] = byte;
+    // 3. Conversion des pixels
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < widthBytes; x++) {
+            let byte = 0;
+            for (let bit = 0; bit < 8; bit++) {
+                const pixelX = x * 8 + bit;
+                if (pixelX < width) {
+                    const idx = (y * width + pixelX) * 4;
+                    if (pixels[idx] < 128) byte |= (1 << (7 - bit));
                 }
             }
-
-            // 4. Fin et Déclenchement (Saut de lignes obligatoires)
-            buffer[offset++] = 0x1B; buffer[offset++] = 0x64; buffer[offset++] = 0x04; // Feed 4 lines
-            buffer[offset++] = 0x0A; buffer[offset++] = 0x0A;
-            
-            return buffer;
+            buffer[offset++] = byte;
         }
+    }
+
+    // 4. Pied de page propriétaire Phomemo (Déclenchement du moteur)
+    buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
+    
+    return buffer;
+}
 
         async function sendChunks(data) {
-            const CHUNK_SIZE = 244; // Taille optimale BLE
-            for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-                const chunk = data.slice(i, i + CHUNK_SIZE);
-                await bluetoothCharacteristic.writeValue(chunk);
-                await new Promise(resolve => setTimeout(resolve, 30));
-            }
-        }
+    const CHUNK_SIZE = 50; 
+    for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+        const chunk = data.slice(i, i + CHUNK_SIZE);
+        await bluetoothCharacteristic.writeValue(chunk);
+        // Pause stricte de 30ms pour laisser le tampon de l'imprimante se vider
+        await new Promise(resolve => setTimeout(resolve, 30)); 
+    }
+}
 
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
