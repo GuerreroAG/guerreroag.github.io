@@ -17,7 +17,7 @@
             --success-color: #4CAF50;
             --btn-bg: #2d2d2d;
             --btn-hover: #3d3d3d;
-        } 
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -105,7 +105,6 @@
             cursor: pointer;
         }
 
-        /* --- Nouveaux styles pour les compteurs rapides --- */
         #quick-counters {
             display: flex;
             gap: 10px;
@@ -290,7 +289,6 @@
         <button id="search-btn" aria-label="Rechercher">🔍</button>
     </div>
 
-    <!-- NOUVEAU : Boutons d'accès rapide -->
     <div id="quick-counters">
         <button class="counter-btn" onclick="generateCounter('+1 / +1')">+1 / +1</button>
         <button class="counter-btn" onclick="generateCounter('+5 / +5')">+5 / +5</button>
@@ -335,7 +333,7 @@
         </div>
     </div>
 
-    <button id="print-btn">🖨️ Connecter & Imprimer</button>
+    <button id="print-btn">🖨️ Connecter & Imprimer (v4)</button>
 
     <script>
         const micBtn = document.getElementById('mic-btn');
@@ -371,7 +369,7 @@
         let currentTokensList = [];
         let currentSearchTerm = "";
 
-                const tokenDictionary = {
+        const tokenDictionary = {
             "tresor": "treasure", "elfe": "elf", "nourriture": "food", "orque": "orc",
             "armee d'orques": "orc army", "gobelin": "goblin", "bete": "beast",
             "humain": "human", "soldat": "soldier", "zombie": "zombie", "esprit": "spirit",
@@ -381,7 +379,6 @@
             "golem": "golem", "construction": "construct", "oiseau": "bird"
         };
 
-
         function resetUI() {
             originalWrapper.style.display = "none";
             ditheredWrapper.style.display = "none";
@@ -390,39 +387,32 @@
             setSelectorContainer.style.display = "none";
         }
 
-        // --- NOUVELLE FONCTION : Génération locale de compteurs ---
         window.generateCounter = function(text) {
             resetUI();
             resultText.textContent = "Marqueur : " + text;
             statusText.textContent = "Génération du marqueur...";
             
-            // On fait un rectangle de 384 de large par 200 de haut
             const width = PRINTER_WIDTH;
             const height = 200; 
             
             ditheredCanvas.width = width;
             ditheredCanvas.height = height;
             
-            // Fond blanc
             ctx.fillStyle = "white";
             ctx.fillRect(0, 0, width, height);
             
-            // Double bordure noire pour le style
             ctx.strokeStyle = "black";
             ctx.lineWidth = 8;
             ctx.strokeRect(10, 10, width - 20, height - 20);
             ctx.lineWidth = 2;
             ctx.strokeRect(22, 22, width - 44, height - 44);
 
-            // Texte centré
             ctx.fillStyle = "black";
-            // On adapte la taille de police si le texte est long (ex: "Vol")
             ctx.font = text.length > 5 ? "bold 70px sans-serif" : "bold 100px sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(text, width / 2, height / 2);
 
-            // Affichage
             ditheredWrapper.style.display = "flex";
             canvasLabel.textContent = "Prêt pour l'impression (Dessiné localement)";
             printBtn.style.display = "block";
@@ -630,7 +620,7 @@
                 await sendChunks(printData);
 
                 statusText.textContent = "Impression terminée !";
-                printBtn.textContent = "🖨️ Connecter & Imprimer";
+                printBtn.textContent = "🖨️ Connecter & Imprimer (v4)";
                 printBtn.style.backgroundColor = "var(--success-color)";
                 
             } catch (error) {
@@ -641,30 +631,24 @@
             }
         });
 
-function generateEscPosData() {
+        function generateEscPosData() {
             const width = ditheredCanvas.width;
             const height = ditheredCanvas.height;
             const pixels = ctx.getImageData(0, 0, width, height).data;
             const widthBytes = Math.ceil(width / 8); 
             
-            // On calcule la taille totale : Header (11) + Image Cmd (8) + Pixels + Footer (8)
-            const buffer = new Uint8Array(11 + 8 + (widthBytes * height) + 8);
+            const buffer = new Uint8Array(2 + 8 + (widthBytes * height) + 5);
             let offset = 0;
 
-            // --- HEADER SPÉCIFIQUE PHOMEMO M110 ---
-            // Vitesse d'impression maximale (0x05)
-            buffer.set([0x1B, 0x4E, 0x0D, 0x05], offset); offset += 4;
-            // Densité d'impression maximale (0x0F)
-            buffer.set([0x1B, 0x4E, 0x04, 0x0F], offset); offset += 4;
-            // Type de papier : Continu (0x0B). Remplacer par 0x0A si retour aux étiquettes.
-            buffer.set([0x1F, 0x11, 0x0B], offset); offset += 3;
+            // 1. Initialisation (Reset)
+            buffer[offset++] = 0x1B; buffer[offset++] = 0x40;
 
-            // --- COMMANDE D'IMAGE STANDARD ---
+            // 2. Commande d'image standard ESC/POS
             buffer[offset++] = 0x1D; buffer[offset++] = 0x76; buffer[offset++] = 0x30; buffer[offset++] = 0x00;
             buffer[offset++] = widthBytes & 0xFF; buffer[offset++] = (widthBytes >> 8) & 0xFF;
             buffer[offset++] = height & 0xFF; buffer[offset++] = (height >> 8) & 0xFF;
 
-            // --- DONNÉES D'IMAGE ---
+            // 3. Pixels
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < widthBytes; x++) {
                     let byte = 0;
@@ -679,19 +663,19 @@ function generateEscPosData() {
                 }
             }
 
-            // --- FOOTER SPÉCIFIQUE PHOMEMO ---
-            // Déclenche physiquement le moteur et finalise l'impression
-            buffer.set([0x1F, 0xF0, 0x05, 0x00, 0x1F, 0xF0, 0x03, 0x00], offset);
+            // 4. Fin et Déclenchement (Saut de lignes obligatoires)
+            buffer[offset++] = 0x1B; buffer[offset++] = 0x64; buffer[offset++] = 0x04; // Feed 4 lines
+            buffer[offset++] = 0x0A; buffer[offset++] = 0x0A;
             
             return buffer;
         }
 
         async function sendChunks(data) {
-            const CHUNK_SIZE = 100;
+            const CHUNK_SIZE = 244; // Taille optimale BLE
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
                 const chunk = data.slice(i, i + CHUNK_SIZE);
                 await bluetoothCharacteristic.writeValue(chunk);
-                await new Promise(resolve => setTimeout(resolve, 20));
+                await new Promise(resolve => setTimeout(resolve, 30));
             }
         }
 
